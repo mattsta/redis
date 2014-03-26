@@ -1974,11 +1974,41 @@ int registerCommand(struct redisCommand *c, int override) {
     return populateCommand(c, override);
 }
 
+struct redisModuleInfo *infoByName(char *name) {
+    dictEntry *de;
+    sds lookup;
+
+    lookup = sdsnew(name);
+    de = dictFind(server.modules,lookup);
+    sdsfree(lookup);
+
+    return de ? dictGetVal(de) : NULL;
+}
+
+int cleanupOldInfo(struct redisModuleInfo *info) {
+    int closed = 0;
+
+    if (info && info->cmds && info->handle && info->module) {
+        closed = 1;
+        dlclose(info->handle);
+        redisLog(REDIS_NOTICE, "Closed previous [%s] module.", info->module);
+        /* TODO: Compare existing command list with new command list and
+        *       remove any commands not existing anymore.
+        * Until then, just free the entire old info->cmds list */
+        listRelease(info->cmds);
+        sdsfree(info->module);
+        info->cmds = NULL;
+        info->handle = NULL;
+        info->module = NULL;
+    }
+
+    return closed;
+}
+
 /* Load a shared object by filename and import commands from the module */
 /* Passing NULL as *module loads the command table from the main
  * redis-server process, so the command system is dynamically self-contained. */
 void loadDynamicCommands(char *module) {
-    dictEntry *de;
     sds lookup;
     void *handle;
     char *name;
@@ -1987,9 +2017,8 @@ void loadDynamicCommands(char *module) {
     struct redisModuleInfo *info = NULL;
 
     /* NOW = resolve all symbols now instead of waiting until they get called.
-     * LOCAL = don't allow module to override anything in the main process.
-     * FIRST = don't chain lookup calls to other loaded modules. */
-    if ((handle = dlopen(module, RTLD_NOW|RTLD_LOCAL|RTLD_FIRST)) == NULL) {
+     * LOCAL = don't allow other modules to use functions from this module */
+    if ((handle = dlopen(module, RTLD_NOW|RTLD_LOCAL)) == NULL) {
         redisLog(REDIS_WARNING, "Could not open module %s because: %s",
             module, dlerror());
         return;
@@ -2009,11 +2038,29 @@ void loadDynamicCommands(char *module) {
             return;
         }
 
-        if (name[0] == '<') {
+        if (name[0] == '<' || name[0] == '\0') {
             /* Prevent someone from naming their module <builtin> */
             redisLog(REDIS_WARNING, "Not loading module \"%s\" [%s]. "
-                "Module name must not begin with '<'.", name, module);
+                "Module name must not begin with '<' or '\\0'.", name, module);
             dlclose(handle);
+            return;
+        }
+
+        /* This looks kinda dumb, but it's pretty simple.
+         * We're dealing with dlopen refcounts here.  Each open = +1 count.
+         * If we load the same module twice, it is actually only loaded once.
+         * On the second load, the refcount just gets incremented.  To actually
+         * reload a module, we must close this newly opened handle *and* the
+         * original old handle.  Then, after we've double closed the handle
+         * for this module, we recurse.  Next time around, since the old handle
+         * is already closed and the info struct is cleaned up, infoByName()
+         * returns a false value because we don't need to fix refcounts
+         * anymore by closing this handle and re-opening things.  We are already
+         * in the process of re-opening and re-populating the info struct. */
+        info = infoByName(mod->name);
+        if (info && cleanupOldInfo(info)) {
+            dlclose(handle);
+            loadDynamicCommands(module);
             return;
         }
     }
@@ -2026,20 +2073,8 @@ void loadDynamicCommands(char *module) {
         return;
     }
 
-    /* If module is already loaded, cleanup old record and close open handle */
-    lookup = sdsnew(name);
-    if ((de = dictFind(server.modules,lookup))) {
-        info = dictGetVal(de);
-        dlclose(info->handle);
-        redisLog(REDIS_NOTICE, "Closed previous [%s] module.", info->module);
-        /* TODO: Compare existing command list with new command list and
-         *       remove any commands not existing anymore.
-         * Until then, just free the entire old info->cmds list */
-        listRelease(info->cmds);
-        sdsfree(info->module); /* we update the filename below */
-    }
-
     /* Create and store record keeping struct */
+    lookup = sdsnew(name);
     if (!info) {
         info = zmalloc(sizeof(*info));
         info->loaded_first = server.unixtime;
