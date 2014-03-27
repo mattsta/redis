@@ -1879,6 +1879,8 @@ struct redisModuleInfo *infoByName(char *name) {
     dictEntry *de;
     sds lookup;
 
+    if (!name) return NULL;
+
     lookup = sdsnew(name);
     de = dictFind(server.modules,lookup);
     sdsfree(lookup);
@@ -1891,6 +1893,13 @@ int cleanupOldInfo(struct redisModuleInfo *info) {
 
     if (info && info->cmds && info->handle && info->module) {
         closed = 1;
+        if (info->cleanup) {
+            redisLog(REDIS_NOTICE, "Running cleanup function for [%s] module.",
+                info->module);
+            info->cleanup(info->privdata);
+            info->cleanup = NULL;
+            info->privdata = NULL;
+        }
         dlclose(info->handle);
         redisLog(REDIS_NOTICE, "Closed previous [%s] module.", info->module);
         /* TODO: Compare existing command list with new command list and
@@ -1916,6 +1925,7 @@ void loadDynamicCommands(char *module) {
     int cmds, allow_command_override = 1, is_self = 0;
     struct redisCommand *dynamic_table, *cmd;
     struct redisModuleInfo *info = NULL;
+    struct redisModule *mod = NULL;
 
     /* NOW = resolve all symbols now instead of waiting until they get called.
      * LOCAL = don't allow other modules to use functions from this module */
@@ -1932,17 +1942,19 @@ void loadDynamicCommands(char *module) {
         allow_command_override = 0;
     } else {
         /* Process requested external module */
-        if (!(name = dlsym(handle, "redisModuleName"))) {
+        if (!(mod = dlsym(handle, "redisModuleDetail"))) {
             redisLog(REDIS_WARNING, "Not loading module [%s]. "
-                "Module is missing 'char redisModuleName[]'.", module);
+                "Module is missing 'struct redisModule redisModuleDetail'.",
+                 module);
             dlclose(handle);
             return;
         }
 
-        if (name[0] == '<' || name[0] == '\0') {
+        if (mod->name && (mod->name[0] == '<' || mod->name[0] == '\0')) {
             /* Prevent someone from naming their module <builtin> */
             redisLog(REDIS_WARNING, "Not loading module \"%s\" [%s]. "
-                "Module name must not begin with '<' or '\\0'.", name, module);
+                "Module name must not begin with '<' or '\\0'.",
+                mod->name, module);
             dlclose(handle);
             return;
         }
@@ -1961,14 +1973,23 @@ void loadDynamicCommands(char *module) {
         info = infoByName(mod->name);
         if (info && cleanupOldInfo(info)) {
             dlclose(handle);
-            loadDynamicCommands(module);
+            loadDynamicCommands(module); /* next run, cleanupOldInfo will = 0 */
             return;
         }
+        name = mod->name;
+        redisLog(REDIS_NOTICE, "Loading new [%s] module.", module);
+    }
+
+    if (mod && strcmp(REDIS_VERSION, mod->version)) {
+        redisLog(REDIS_WARNING, "[%s] version mismatch. "
+            "Module was compiled against %s, but we are %s. "
+            "Continuing, but undefined behavior may occur.",
+            module, mod->version, REDIS_VERSION);
     }
 
     if (!(dynamic_table = dlsym(handle, "redisCommandTable"))) {
         redisLog(REDIS_WARNING, "Not loading module %s [%s]. "
-            "Module is missing 'struct redisCommand redisCommandTable[]'.",
+            "Module missing 'struct redisCommand redisCommandTable[]'.",
             name, module);
         dlclose(handle);
         return;
@@ -1981,6 +2002,8 @@ void loadDynamicCommands(char *module) {
     if (!info) {
         info = zmalloc(sizeof(*info));
         info->loaded_first = server.unixtime;
+        info->cleanup = NULL;
+        info->privdata = NULL;
         dictAdd(server.modules, lookup, info);
     }
     info->module = sdsnew(module);
@@ -2003,7 +2026,14 @@ void loadDynamicCommands(char *module) {
         if (!is_self) redisLog(REDIS_NOTICE, "%s command %s [%s]",
                 status, cmd->name, module);
     }
-    redisLog(REDIS_NOTICE, "Module %s loaded %d commands.", module, cmds);
+
+    if (mod && mod->load) {
+        redisLog(REDIS_NOTICE, "Running load function of module [%s].", module);
+        info->privdata = mod->load();
+        info->cleanup = mod->cleanup;
+    }
+
+    redisLog(REDIS_NOTICE, "Module [%s] loaded %d commands.", module, cmds);
 }
 
 /* ========================== Redis OP Array API ============================ */
@@ -2368,8 +2398,20 @@ void closeListeningSockets(int unlink_unix_socket) {
 int prepareForShutdown(int flags) {
     int save = flags & REDIS_SHUTDOWN_SAVE;
     int nosave = flags & REDIS_SHUTDOWN_NOSAVE;
+    dictIterator *di;
+    dictEntry *de;
 
     redisLog(REDIS_WARNING,"User requested shutdown...");
+
+    /* Unload all modules (running their cleanup functions (if any)) */
+    di = dictGetIterator(server.modules);
+    while ((de = dictNext(di))) {
+        struct redisModuleInfo *info = dictGetVal(de);
+        cleanupOldInfo(info);
+        zfree(info);
+    }
+    dictReleaseIterator(di);
+
     /* Kill the saving child if there is a background saving in progress.
        We want to avoid race conditions, for instance our saving child may
        overwrite the synchronous saving did by SHUTDOWN. */

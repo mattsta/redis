@@ -863,11 +863,20 @@ struct redisCommandsTable {
     int length;
 };
 
+struct redisModule {
+    char *version;
+    char *name;
+    void *(*load)(void);
+    void (*cleanup)(void *privdata);
+};
+
 struct redisModuleInfo {
     /* name is stored in the dict as the key to this struct */
     char *module;
     void *handle;
     list *cmds;
+    void (*cleanup)(void *privdata);
+    void *privdata;
     time_t loaded_first;
     time_t loaded_last;
 };
