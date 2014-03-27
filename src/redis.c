@@ -2684,6 +2684,7 @@ sds genRedisInfoString(char *section) {
     if (allsections || defsections || !strcasecmp(section,"server")) {
         static int call_uname = 1;
         static struct utsname name;
+
         char *mode;
 
         if (server.sentinel_mode) mode = "sentinel";
@@ -2715,7 +2716,8 @@ sds genRedisInfoString(char *section) {
             "uptime_in_days:%jd\r\n"
             "hz:%d\r\n"
             "lru_clock:%ld\r\n"
-            "config_file:%s\r\n",
+            "config_file:%s\r\n"
+            "loaded_modules:%lu\r\n",
             REDIS_VERSION,
             redisGitSHA1(),
             strtol(redisGitDirty(),NULL,10) > 0,
@@ -2736,7 +2738,8 @@ sds genRedisInfoString(char *section) {
             (intmax_t)(uptime/(3600*24)),
             server.hz,
             (unsigned long) server.lruclock,
-            server.configfile ? server.configfile : "");
+            server.configfile ? server.configfile : "",
+            dictSize(server.modules)-1);
     }
 
     /* Clients */
