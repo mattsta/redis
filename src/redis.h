@@ -962,7 +962,8 @@ struct redisCommandsTable {
 
 struct redisModule {
     int type;
-    char *version;
+    char *redis_version;
+    char *module_version;
     char *name;
     void *(*load)(void);
     void (*cleanup)(void *privdata);
@@ -971,6 +972,8 @@ struct redisModule {
 struct redisModuleInfo {
     /* name is stored in the dict as the key to this struct */
     char *module;
+    char *redis_version;
+    char *module_version;
     void *handle;
     list *cmds;
     void (*cleanup)(void *privdata);

@@ -2007,6 +2007,10 @@ int cleanupOldInfo(struct redisModuleInfo *info) {
         * Until then, just free the entire old info->cmds list */
         listRelease(info->cmds);
         sdsfree(info->module);
+        sdsfree(info->redis_version);
+        sdsfree(info->module_version);
+        info->redis_version = NULL;
+        info->module_version = NULL;
         info->cmds = NULL;
         info->handle = NULL;
         info->module = NULL;
@@ -2022,6 +2026,7 @@ void loadDynamicCommands(char *module) {
     sds lookup;
     void *handle;
     char *name;
+    char *rversion, *mversion;
     int type;
     int cmds, allow_command_override = 1, is_self = 0;
     struct redisCommand *dynamic_table, *cmd;
@@ -2042,6 +2047,7 @@ void loadDynamicCommands(char *module) {
         name = module = "<builtin>";
         allow_command_override = 0;
         type = REDIS_MODULE_COMMAND;
+        rversion = mversion = REDIS_VERSION;
     } else {
         /* Process requested external module */
         if (!(mod = dlsym(handle, "redisModuleDetail"))) {
@@ -2080,13 +2086,15 @@ void loadDynamicCommands(char *module) {
         }
         name = mod->name;
         type = mod->type;
+        rversion = mod->redis_version;
+        mversion = mod->module_version;
         redisLog(REDIS_NOTICE, "Loading new [%s] module.", module);
     }
 
-    if (mod && strcmp(REDIS_VERSION, mod->version)) {
+    if (mod && strcmp(REDIS_VERSION, mod->redis_version)) {
         redisLog(REDIS_WARNING, "[%s] version mismatch. "
             "Module was compiled against %s, but we are %s. ",
-            module, mod->version, REDIS_VERSION);
+            module, mod->redis_version, REDIS_VERSION);
         if (server.modules_strict) {
             redisLog(REDIS_WARNING, "Not loading [%s] because "
                 "'module-strict' is enabled.",
@@ -2120,6 +2128,8 @@ void loadDynamicCommands(char *module) {
         dictAdd(server.modules, lookup, info);
     }
     info->module = sdsnew(module);
+    info->redis_version = sdsnew(rversion);
+    info->module_version = sdsnew(mversion);
     info->handle = handle;
     info->loaded_last = server.unixtime;
     info->cmds = listCreate();
@@ -3284,9 +3294,10 @@ sds genRedisInfoString(char *section) {
             cmds_joined = sdsjoin(cmds, cmd_count, ",");
 
             info = sdscatprintf(info,
-                "module_%s:filename=%s,first_loaded=%lu,"
-                "last_loaded=%lu,commands=%s\r\n",
+                "module_%s:filename=%s,compiled_against=%s,module_version=%s,"
+                "first_loaded=%lu,last_loaded=%lu,commands=%s\r\n",
                 name, modinfo->module,
+                modinfo->redis_version, modinfo->module_version,
                 modinfo->loaded_first, modinfo->loaded_last,
                 cmds_joined);
              sdsfree(cmds_joined);
