@@ -1493,6 +1493,7 @@ void initServerConfig(void) {
     server.migrate_cached_sockets = dictCreate(&migrateCacheDictType,NULL);
     server.next_client_id = 1; /* Client IDs, start from 1 .*/
     server.loading_process_events_interval_bytes = (1024*1024*2);
+    server.modules_strict = 1;
 
     server.lruclock = getLRUClock();
     resetServerSaveParams();
@@ -2081,9 +2082,19 @@ void loadDynamicCommands(char *module) {
 
     if (mod && strcmp(REDIS_VERSION, mod->version)) {
         redisLog(REDIS_WARNING, "[%s] version mismatch. "
-            "Module was compiled against %s, but we are %s. "
-            "Continuing, but undefined behavior may occur.",
+            "Module was compiled against %s, but we are %s. ",
             module, mod->version, REDIS_VERSION);
+        if (server.modules_strict) {
+            redisLog(REDIS_WARNING, "Not loading [%s] because "
+                "'module-strict' is enabled.",
+                module);
+            dlclose(module);
+            return;
+        } else {
+            redisLog(REDIS_WARNING, "Strict version enforcement is disabled. "
+                "Loading [%s] but undefined behavior may occur.",
+                module);
+        }
     }
 
     if (!(dynamic_table = dlsym(handle, "redisCommandTable"))) {

@@ -68,6 +68,12 @@ int yesnotoi(char *s) {
     else return -1;
 }
 
+/* yes = true; anything else = false */
+int yesnotoi_strict(char *s) {
+    int i = yesnotoi(s);
+    return i == -1 ? 0 : i;
+}
+
 void appendServerSaveParams(time_t seconds, int changes) {
     server.saveparams = zrealloc(server.saveparams,sizeof(struct saveparam)*(server.saveparamslen+1));
     server.saveparams[server.saveparamslen].seconds = seconds;
@@ -557,6 +563,8 @@ void loadServerConfigFromString(char *config) {
             }
         } else if (!strcasecmp(argv[0],"module-add") && argc == 2) {
             loadDynamicCommands(argv[1]);
+        } else if (!strcasecmp(argv[0],"module-strict") && argc == 2) {
+            server.modules_strict = yesnotoi_strict(argv[1]);
         } else {
             err = "Bad directive or wrong number of arguments"; goto loaderr;
         }
@@ -980,6 +988,8 @@ void configSetCommand(redisClient *c) {
         server.cluster_slave_validity_factor = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"module-add")) {
         loadDynamicCommands(o->ptr);
+    } else if (!strcasecmp(c->argv[2]->ptr,"module-strict")) {
+        server.modules_strict = yesnotoi_strict(o->ptr);
     } else {
         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
             (char*)c->argv[2]->ptr);
