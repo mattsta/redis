@@ -2022,6 +2022,7 @@ void loadDynamicCommands(char *module) {
     sds lookup;
     void *handle;
     char *name;
+    int type;
     int cmds, allow_command_override = 1, is_self = 0;
     struct redisCommand *dynamic_table, *cmd;
     struct redisModuleInfo *info = NULL;
@@ -2040,6 +2041,7 @@ void loadDynamicCommands(char *module) {
         is_self = 1;
         name = module = "<builtin>";
         allow_command_override = 0;
+        type = REDIS_MODULE_COMMAND;
     } else {
         /* Process requested external module */
         if (!(mod = dlsym(handle, "redisModuleDetail"))) {
@@ -2077,6 +2079,7 @@ void loadDynamicCommands(char *module) {
             return;
         }
         name = mod->name;
+        type = mod->type;
         redisLog(REDIS_NOTICE, "Loading new [%s] module.", module);
     }
 
@@ -2097,7 +2100,8 @@ void loadDynamicCommands(char *module) {
         }
     }
 
-    if (!(dynamic_table = dlsym(handle, "redisCommandTable"))) {
+    if (type & REDIS_MODULE_COMMAND &&
+        !(dynamic_table = dlsym(handle, "redisCommandTable"))) {
         redisLog(REDIS_WARNING, "Not loading module %s [%s]. "
             "Module missing 'struct redisCommand redisCommandTable[]'.",
             name, module);
@@ -2112,6 +2116,7 @@ void loadDynamicCommands(char *module) {
         info->loaded_first = server.unixtime;
         info->cleanup = NULL;
         info->privdata = NULL;
+        info->type = type;
         dictAdd(server.modules, lookup, info);
     }
     info->module = sdsnew(module);
@@ -2122,17 +2127,20 @@ void loadDynamicCommands(char *module) {
     listSetFreeMethod(info->cmds, (void (*)(void *ptr))&sdsfree);
     sdsfree(lookup);
 
-    for (cmd = dynamic_table, cmds = 0; cmd->name; cmd++, cmds++) {
-        int added = registerCommand(cmd, allow_command_override);
-        char *status = NULL;
+    if (type & REDIS_MODULE_COMMAND) {
+        for (cmd = dynamic_table, cmds = 0; cmd->name; cmd++, cmds++) {
+            int added = registerCommand(cmd, allow_command_override);
+            char *status = NULL;
 
-        if (added == 0) status = "Added";
-        else if (added == 1) status = "Replaced existing";
-        else if (added == -1) status = "Encountered memory error loading";
+            if (added == 0) status = "Added";
+            else if (added == 1) status = "Replaced existing";
+            else if (added == -1) status = "Encountered memory error loading";
 
-        if (added >= 0) listAddNodeTail(info->cmds, sdsnew(cmd->name));
-        if (!is_self) redisLog(REDIS_NOTICE, "%s command %s [%s]",
-                status, cmd->name, module);
+            if (added >= 0) listAddNodeTail(info->cmds, sdsnew(cmd->name));
+            if (!is_self) redisLog(REDIS_NOTICE, "%s command %s [%s]",
+                    status, cmd->name, module);
+        }
+        redisLog(REDIS_NOTICE, "Module [%s] loaded %d commands.", module, cmds);
     }
 
     if (mod && mod->load) {
@@ -2141,7 +2149,6 @@ void loadDynamicCommands(char *module) {
         info->cleanup = mod->cleanup;
     }
 
-    redisLog(REDIS_NOTICE, "Module [%s] loaded %d commands.", module, cmds);
 }
 
 /* ========================== Redis OP Array API ============================ */

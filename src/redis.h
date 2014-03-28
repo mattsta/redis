@@ -958,7 +958,10 @@ struct redisCommandsTable {
     int length;
 };
 
+#define REDIS_MODULE_COMMAND 1
+
 struct redisModule {
+    int type;
     char *version;
     char *name;
     void *(*load)(void);
@@ -974,6 +977,7 @@ struct redisModuleInfo {
     void *privdata;
     time_t loaded_first;
     time_t loaded_last;
+    int type;
 };
 
 struct redisFunctionSym {
