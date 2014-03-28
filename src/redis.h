@@ -683,6 +683,7 @@ struct redisServer {
     int dbnum;                      /* Total number of configured DBs */
     int daemonize;                  /* True if running as a daemon */
     dict *modules;                  /* Modules loaded by module-add */
+    int modules_strict;             /* Flag allowing mismatched mod versions */
     clientBufferLimitsConfig client_obuf_limits[REDIS_CLIENT_TYPE_COUNT];
     /* AOF persistence */
     int aof_state;                  /* REDIS_AOF_(ON|OFF|WAIT_REWRITE) */
