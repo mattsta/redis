@@ -1615,4 +1615,6 @@ void redisLogHexDump(int level, char *descr, void *value, size_t len);
 #define redisDebugMark() \
     printf("-- MARK %s:%d --\n", __FILE__, __LINE__)
 
+/* dynamic.h is at the bottom because it relies on some typedefs above */
+#include "dynamic.h" /* Dynamic Redis prototypes regular Redis doesn't need */
 #endif
