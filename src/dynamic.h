@@ -8,4 +8,13 @@ void dictSdsDestructor(void *privdata, void *val);
 
 /* From scripting.c */
 void evalGenericCommand(redisClient *c, int evalsha);
+
+/* From t_zset.c */
+unsigned char *zzlFirstInRange(unsigned char *zl, zrangespec range);
+unsigned char *zzlFind(unsigned char *zl, robj *ele, double *score);
+int zzlLexValueGteMin(unsigned char *p, zlexrangespec *spec);
+int zzlLexValueLteMax(unsigned char *p, zlexrangespec *spec);
+int zslValueGteMin(double value, zrangespec *spec);
+int zslValueLteMax(double value, zrangespec *spec);
+
 #endif
