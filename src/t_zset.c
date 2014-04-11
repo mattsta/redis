@@ -209,11 +209,11 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
     return 0; /* not found */
 }
 
-static int zslValueGteMin(double value, zrangespec *spec) {
+int zslValueGteMin(double value, zrangespec *spec) {
     return spec->minex ? (value > spec->min) : (value >= spec->min);
 }
 
-static int zslValueLteMax(double value, zrangespec *spec) {
+int zslValueLteMax(double value, zrangespec *spec) {
     return spec->maxex ? (value < spec->max) : (value <= spec->max);
 }
 
@@ -821,14 +821,14 @@ unsigned char *zzlLastInRange(unsigned char *zl, zrangespec *range) {
     return NULL;
 }
 
-static int zzlLexValueGteMin(unsigned char *p, zlexrangespec *spec) {
+int zzlLexValueGteMin(unsigned char *p, zlexrangespec *spec) {
     robj *value = ziplistGetObject(p);
     int res = zslLexValueGteMin(value,spec);
     decrRefCount(value);
     return res;
 }
 
-static int zzlLexValueLteMax(unsigned char *p, zlexrangespec *spec) {
+int zzlLexValueLteMax(unsigned char *p, zlexrangespec *spec) {
     robj *value = ziplistGetObject(p);
     int res = zslLexValueLteMax(value,spec);
     decrRefCount(value);
