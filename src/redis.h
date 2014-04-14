@@ -750,6 +750,7 @@ struct redisServer {
     int supervised_mode;            /* See REDIS_SUPERVISED_* */
     int daemonize;                  /* True if running as a daemon */
     clientBufferLimitsConfig client_obuf_limits[REDIS_CLIENT_TYPE_COUNT];
+    dict *modules;                  /* Modules loaded by module-add */
     /* AOF persistence */
     int aof_state;                  /* REDIS_AOF_(ON|OFF|WAIT_REWRITE) */
     int aof_fsync;                  /* Kind of fsync() policy */
@@ -949,6 +950,20 @@ struct redisCommand {
     int lastkey;  /* The last argument that's a key */
     int keystep;  /* The step between first and last key */
     long long microseconds, calls;
+};
+
+struct redisCommandsTable {
+    struct redisCommand **table;
+    int length;
+};
+
+struct redisModuleInfo {
+    /* name is stored in the dict as the key to this struct */
+    char *module;
+    void *handle;
+    list *cmds;
+    time_t loaded_first;
+    time_t loaded_last;
 };
 
 struct redisFunctionSym {
@@ -1265,7 +1280,7 @@ void usage(void);
 void updateDictResizePolicy(void);
 int htNeedsResize(dict *dict);
 void oom(const char *msg);
-void populateCommandTable(void);
+void loadDynamicCommands(char *module);
 void resetCommandTableStats(void);
 void adjustOpenFilesLimit(void);
 void closeListeningSockets(int unlink_unix_socket);
