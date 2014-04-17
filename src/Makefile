@@ -19,7 +19,7 @@ DEPENDENCY_TARGETS=hiredis linenoise lua
 
 # Default settings
 STD=-std=c99 -pedantic
-WARN=-Wall -W
+WARN=-Wall -W -Wno-missing-field-initializers
 OPT=$(OPTIMIZATION)
 
 PREFIX?=/usr/local

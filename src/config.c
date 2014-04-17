@@ -502,6 +502,8 @@ void loadServerConfigFromString(char *config) {
                 err = sentinelHandleConfiguration(argv+1,argc-1);
                 if (err) goto loaderr;
             }
+        } else if (!strcasecmp(argv[0],"module-add") && argc == 2) {
+            loadDynamicCommands(argv[1]);
         } else {
             err = "Bad directive or wrong number of arguments"; goto loaderr;
         }
@@ -897,6 +899,8 @@ void configSetCommand(redisClient *c) {
             ll < 0) goto badfmt;
         server.repl_min_slaves_max_lag = ll;
         refreshGoodSlavesCount();
+    } else if (!strcasecmp(c->argv[2]->ptr,"module-add")) {
+        loadDynamicCommands(o->ptr);
     } else {
         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
             (char*)c->argv[2]->ptr);

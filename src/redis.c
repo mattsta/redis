@@ -51,6 +51,7 @@
 #include <sys/resource.h>
 #include <sys/utsname.h>
 #include <locale.h>
+#include <dlfcn.h>
 
 /* Our shared "common" objects */
 
@@ -90,7 +91,7 @@ struct redisServer server; /* server global state */
  * always be set to zero.
  *
  * Command flags are expressed using strings where every character represents
- * a flag. Later the populateCommandTable() function will take care of
+ * a flag. Later the populateCommand() function will take care of
  * populating the real 'flags' field using this characters.
  *
  * This is the meaning of the flags:
@@ -274,9 +275,11 @@ struct redisCommand redisCommandTable[] = {
     {"pfcount",pfcountCommand,-2,"r",0,NULL,1,1,1,0,0},
     {"pfmerge",pfmergeCommand,-2,"wm",0,NULL,1,-1,1,0,0},
     {"pfdebug",pfdebugCommand,-3,"w",0,NULL,0,0,0,0,0},
-    {"latency",latencyCommand,-2,"arslt",0,NULL,0,0,0,0,0}
+    {"latency",latencyCommand,-2,"arslt",0,NULL,0,0,0,0,0},
+    {0}
 };
 
+struct redisCommandsTable redisCommands = {0};
 /*============================ Utility functions ============================ */
 
 /* Low level logging. To use only for very big messages, otherwise
@@ -413,6 +416,11 @@ int dictSdsKeyCompare(void *privdata, const void *key1,
     l2 = sdslen((sds)key2);
     if (l1 != l2) return 0;
     return memcmp(key1, key2, l1) == 0;
+}
+
+void *dictSdsKeyDup(void *privdata, const void *string) {
+    DICT_NOTUSED(privdata);
+    return sdsnew(string);
 }
 
 /* A case insensitive version used for the command lookup table and other
@@ -554,9 +562,19 @@ dictType keyptrDictType = {
 /* Command table. sds string -> command struct pointer. */
 dictType commandTableDictType = {
     dictSdsCaseHash,           /* hash function */
-    NULL,                      /* key dup */
+    dictSdsKeyDup,             /* key dup */
     NULL,                      /* val dup */
     dictSdsKeyCaseCompare,     /* key compare */
+    dictSdsDestructor,         /* key destructor */
+    NULL                       /* val destructor */
+};
+
+/* Loaded modules table. sds string -> dlopen handle pointer. */
+dictType modulesTableDictType = {
+    dictSdsCaseHash,           /* hash function */
+    dictSdsKeyDup,             /* key dup */
+    NULL,                      /* val dup */
+    dictSdsKeyCompare,         /* key compare */
     dictSdsDestructor,         /* key destructor */
     NULL                       /* val destructor */
 };
@@ -1433,7 +1451,8 @@ void initServerConfig(void) {
      * redis.conf using the rename-command directive. */
     server.commands = dictCreate(&commandTableDictType,NULL);
     server.orig_commands = dictCreate(&commandTableDictType,NULL);
-    populateCommandTable();
+    server.modules = dictCreate(&modulesTableDictType,NULL);
+    loadDynamicCommands(NULL);
     server.delCommand = lookupCommandByCString("del");
     server.multiCommand = lookupCommandByCString("multi");
     server.lpushCommand = lookupCommandByCString("lpush");
@@ -1780,54 +1799,174 @@ void initServer(void) {
     bioInit();
 }
 
-/* Populates the Redis Command Table starting from the hard coded list
- * we have on top of redis.c file. */
-void populateCommandTable(void) {
-    int j;
-    int numcommands = sizeof(redisCommandTable)/sizeof(struct redisCommand);
+/* Adds redisCommand c into the Redis Command Table */
+/* Returns: 0 if the command is new
+ *          1 if the command replaced an existing command */
+int populateCommand(struct redisCommand *c, int override) {
+    char *f;
+    int retval1, retval2, retval_actual;
+    sds lookup = sdsnew(c->name);
 
-    for (j = 0; j < numcommands; j++) {
-        struct redisCommand *c = redisCommandTable+j;
-        char *f = c->sflags;
-        int retval1, retval2;
-
-        while(*f != '\0') {
-            switch(*f) {
-            case 'w': c->flags |= REDIS_CMD_WRITE; break;
-            case 'r': c->flags |= REDIS_CMD_READONLY; break;
-            case 'm': c->flags |= REDIS_CMD_DENYOOM; break;
-            case 'a': c->flags |= REDIS_CMD_ADMIN; break;
-            case 'p': c->flags |= REDIS_CMD_PUBSUB; break;
-            case 's': c->flags |= REDIS_CMD_NOSCRIPT; break;
-            case 'R': c->flags |= REDIS_CMD_RANDOM; break;
-            case 'S': c->flags |= REDIS_CMD_SORT_FOR_SCRIPT; break;
-            case 'l': c->flags |= REDIS_CMD_LOADING; break;
-            case 't': c->flags |= REDIS_CMD_STALE; break;
-            case 'M': c->flags |= REDIS_CMD_SKIP_MONITOR; break;
-            case 'F': c->flags |= REDIS_CMD_FAST; break;
-            default: redisPanic("Unsupported command flag"); break;
-            }
-            f++;
+    for (f = c->sflags; *f; f++) {
+        switch(*f) {
+        case 'w': c->flags |= REDIS_CMD_WRITE; break;
+        case 'r': c->flags |= REDIS_CMD_READONLY; break;
+        case 'm': c->flags |= REDIS_CMD_DENYOOM; break;
+        case 'a': c->flags |= REDIS_CMD_ADMIN; break;
+        case 'p': c->flags |= REDIS_CMD_PUBSUB; break;
+        case 's': c->flags |= REDIS_CMD_NOSCRIPT; break;
+        case 'R': c->flags |= REDIS_CMD_RANDOM; break;
+        case 'S': c->flags |= REDIS_CMD_SORT_FOR_SCRIPT; break;
+        case 'l': c->flags |= REDIS_CMD_LOADING; break;
+        case 't': c->flags |= REDIS_CMD_STALE; break;
+        case 'M': c->flags |= REDIS_CMD_SKIP_MONITOR; break;
+        case 'F': c->flags |= REDIS_CMD_FAST; break;
+        default: redisPanic("Unsupported command flag"); break;
         }
+    }
 
-        retval1 = dictAdd(server.commands, sdsnew(c->name), c);
+    if (override) {
+        /* dictReplace will add the command if it doesn't exist,
+         * otherwise the command will get replaced with our new c */
+        /* retval of 0 means replaced; 1 means added as new;
+         * We don't greatly care about the status of the original
+         * command replacement yet. */
+        retval1 = dictReplace(server.commands, lookup, c);
+        retval2 = dictReplace(server.orig_commands, lookup, c);
+        retval_actual = retval1 == 0;
+    } else {
+        /* else, don't allow commands to be overriden and abort
+         * if a duplicate command is encountered */
+        /* retval of DICT_ERR means the key already existed. */
+        retval1 = dictAdd(server.commands, lookup, c);
         /* Populate an additional dictionary that will be unaffected
          * by rename-command statements in redis.conf. */
-        retval2 = dictAdd(server.orig_commands, sdsnew(c->name), c);
+        retval2 = dictAdd(server.orig_commands, lookup, c);
         redisAssert(retval1 == DICT_OK && retval2 == DICT_OK);
+        /* DICT_ERR means the value already existed, so we're
+         * returning 1 if it existed. */
+        retval_actual = retval1 == DICT_ERR;
     }
+    sdsfree(lookup);
+    return retval_actual;
 }
 
 void resetCommandTableStats(void) {
-    int numcommands = sizeof(redisCommandTable)/sizeof(struct redisCommand);
     int j;
 
-    for (j = 0; j < numcommands; j++) {
-        struct redisCommand *c = redisCommandTable+j;
+    for (j = 0; j < redisCommands.length; j++) {
+        struct redisCommand *c = redisCommands.table[j];
 
         c->microseconds = 0;
         c->calls = 0;
     }
+}
+
+/* Increase size of redisCommands.table by one entry, then add new command */
+int registerCommand(struct redisCommand *c, int override) {
+    int new_sz = sizeof(*redisCommands.table)*(redisCommands.length+1);
+    if ((redisCommands.table = zrealloc(redisCommands.table, new_sz)) == NULL) {
+        redisLog(REDIS_WARNING, "Error adding new command %s: %s",
+            c->name, strerror(errno));
+        return -1;
+    }
+    redisCommands.table[redisCommands.length] = c;
+    redisCommands.length++;
+    return populateCommand(c, override);
+}
+
+/* Load a shared object by filename and import commands from the module */
+/* Passing NULL as *module loads the command table from the main
+ * redis-server process, so the command system is dynamically self-contained. */
+void loadDynamicCommands(char *module) {
+    dictEntry *de;
+    sds lookup;
+    void *handle;
+    char *name;
+    int cmds, allow_command_override = 1, is_self = 0;
+    struct redisCommand *dynamic_table, *cmd;
+    struct redisModuleInfo *info = NULL;
+
+    /* NOW = resolve all symbols now instead of waiting until they get called.
+     * LOCAL = don't allow module to override anything in the main process.
+     * FIRST = don't chain lookup calls to other loaded modules. */
+    if ((handle = dlopen(module, RTLD_NOW|RTLD_LOCAL|RTLD_FIRST)) == NULL) {
+        redisLog(REDIS_WARNING, "Could not open module %s because: %s",
+            module, dlerror());
+        return;
+    }
+
+    if (module == NULL) {
+        /* Process as the main executable */
+        is_self = 1;
+        name = module = "<builtin>";
+        allow_command_override = 0;
+    } else {
+        /* Process requested external module */
+        if (!(name = dlsym(handle, "redisModuleName"))) {
+            redisLog(REDIS_WARNING, "Not loading module [%s]. "
+                "Module is missing 'char redisModuleName[]'.", module);
+            dlclose(handle);
+            return;
+        }
+
+        if (name[0] == '<') {
+            /* Prevent someone from naming their module <builtin> */
+            redisLog(REDIS_WARNING, "Not loading module \"%s\" [%s]. "
+                "Module name must not begin with '<'.", name, module);
+            dlclose(handle);
+            return;
+        }
+    }
+
+    if (!(dynamic_table = dlsym(handle, "redisCommandTable"))) {
+        redisLog(REDIS_WARNING, "Not loading module %s [%s]. "
+            "Module is missing 'struct redisCommand redisCommandTable[]'.",
+            name, module);
+        dlclose(handle);
+        return;
+    }
+
+    /* If module is already loaded, cleanup old record and close open handle */
+    lookup = sdsnew(name);
+    if ((de = dictFind(server.modules,lookup))) {
+        info = dictGetVal(de);
+        dlclose(info->handle);
+        redisLog(REDIS_NOTICE, "Closed previous [%s] module.", info->module);
+        /* TODO: Compare existing command list with new command list and
+         *       remove any commands not existing anymore.
+         * Until then, just free the entire old info->cmds list */
+        listRelease(info->cmds);
+        sdsfree(info->module); /* we update the filename below */
+    }
+
+    /* Create and store record keeping struct */
+    if (!info) {
+        info = zmalloc(sizeof(*info));
+        info->loaded_first = server.unixtime;
+        dictAdd(server.modules, lookup, info);
+    }
+    info->module = sdsnew(module);
+    info->handle = handle;
+    info->loaded_last = server.unixtime;
+    info->cmds = listCreate();
+    /* Tell the list we want to free all sds on listRelease */
+    info->cmds->free = (void (*)(void *ptr))&sdsfree;
+    sdsfree(lookup);
+
+    for (cmd = dynamic_table, cmds = 0; cmd->name; cmd++, cmds++) {
+        int added = registerCommand(cmd, allow_command_override);
+        char *status = NULL;
+
+        if (added == 0) status = "Added";
+        else if (added == 1) status = "Replaced existing";
+        else if (added == -1) status = "Encountered memory error loading";
+
+        if (added >= 0) listAddNodeTail(info->cmds, sdsnew(cmd->name));
+        if (!is_self) redisLog(REDIS_NOTICE, "%s command %s [%s]",
+                status, cmd->name, module);
+    }
+    redisLog(REDIS_NOTICE, "Module %s loaded %d commands.", module, cmds);
 }
 
 /* ========================== Redis OP Array API ============================ */
@@ -2448,7 +2587,7 @@ void bytesToHuman(char *s, unsigned long long n) {
 sds genRedisInfoString(char *section) {
     sds info = sdsempty();
     time_t uptime = server.unixtime-server.stat_starttime;
-    int j, numcommands;
+    int j;
     struct rusage self_ru, c_ru;
     unsigned long lol, bib;
     int allsections = 0, defsections = 0;
@@ -2838,9 +2977,8 @@ sds genRedisInfoString(char *section) {
     if (allsections || !strcasecmp(section,"commandstats")) {
         if (sections++) info = sdscat(info,"\r\n");
         info = sdscatprintf(info, "# Commandstats\r\n");
-        numcommands = sizeof(redisCommandTable)/sizeof(struct redisCommand);
-        for (j = 0; j < numcommands; j++) {
-            struct redisCommand *c = redisCommandTable+j;
+        for (j = 0; j < redisCommands.length; j++) {
+            struct redisCommand *c = redisCommands.table[j];
 
             if (!c->calls) continue;
             info = sdscatprintf(info,
@@ -2848,6 +2986,41 @@ sds genRedisInfoString(char *section) {
                 c->name, c->calls, c->microseconds,
                 (c->calls == 0) ? 0 : ((float)c->microseconds/c->calls));
         }
+    }
+
+    /* loaded modules */
+    if (allsections || !strcasecmp(section,"modules")) {
+        dictIterator *di = dictGetIterator(server.modules);
+        dictEntry *de;
+
+        if (sections++) info = sdscat(info,"\r\n");
+        info = sdscatprintf(info, "# Modules\r\n");
+        while ((de = dictNext(di))) {
+            listIter li;
+            listNode *ln;
+            sds name = dictGetKey(de);
+            struct redisModuleInfo *modinfo = dictGetVal(de);
+            int cmd_count = modinfo->cmds->len;
+            char **cmds = zmalloc(sizeof(*cmds)*cmd_count);
+            int i = 0;
+            sds cmds_joined;
+
+            listRewind(modinfo->cmds,&li);
+            while ((ln = listNext(&li)) != NULL) {
+                cmds[i++] = ln->value;
+            }
+            cmds_joined = sdsjoin(cmds, cmd_count, ",");
+            zfree(cmds);
+
+            info = sdscatprintf(info,
+                "module_%s:filename=%s,first_loaded=%lu,"
+                "last_loaded=%lu,commands=%s\r\n",
+                name, modinfo->module,
+                modinfo->loaded_first, modinfo->loaded_last,
+                cmds_joined);
+             sdsfree(cmds_joined);
+        }
+        dictReleaseIterator(di);
     }
 
     /* Key space */
