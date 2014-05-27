@@ -18,6 +18,7 @@ compiler:
 env:
     - TEST_TARGET=test
     - TEST_TARGET=test-sentinel
+    - TEST_TARGET=test-cluster
     - TEST_TARGET=test-cluster-bring-up
     - REDIS_CFLAGS="-Werror"
 

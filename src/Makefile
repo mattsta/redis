@@ -217,6 +217,9 @@ test: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME)
 test-sentinel: $(REDIS_SENTINEL_NAME)
 	@(cd ..; ./runtest-sentinel)
 
+test-cluster: $(REDIS_SERVER_NAME)
+	@(cd ..; ./runtest-cluster)
+
 test-cluster-bring-up: $(REDIS_SERVER_NAME)
 	@(../tests/integration/runtest-automated-cluster-bring-up)
 
