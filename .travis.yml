@@ -20,11 +20,14 @@ env:
     - TEST_TARGET=test-sentinel
     - TEST_TARGET=test-cluster
     - TEST_TARGET=test-cluster-bring-up
+    - TEST_TARGET="32bit test"
+    - TEST_TARGET="32bit test-sentinel"
+    - TEST_TARGET="32bit test-cluster"
     - REDIS_CFLAGS="-Werror"
 
 # Redis testing needs tcl
 install:
-    - sudo apt-get install tcl -y
+    - sudo apt-get install tcl libc6-dev-i386 -y
     - gem install redis
 
 # We start from inside src so -j is evaluated properly
