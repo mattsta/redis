@@ -1,4 +1,4 @@
-#define REDIS_VERSION "2.8.19-dynamic-0.5.1"
+#define REDIS_VERSION "2.8.19-dynamic-0.5.2"
 /* VER is: prefix of 1, then:
  * zero-padded two digit number for each version decimal */
 /* Remove DYN_REDIS_VER for now because... it was only guarding
