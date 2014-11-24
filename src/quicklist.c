@@ -272,9 +272,7 @@ void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry) {
             iter->current = next;
             iter->offset = 0;
         } else {
-            /* Current node remains.  Replace iterator zi with next zi. */
-            iter->zi = entry->zi;
-            iter->offset++;
+            /* Current node remains. */
         }
     } else if (iter->direction == AL_START_TAIL) {
         if (deleted_node) {
@@ -573,8 +571,8 @@ int quicklistDelRange(quicklist *quicklist, const long start,
 
     if (start >= 0 && extent > (quicklist->count - start)) {
         /* if requesting delete more elements than exist, limit to list size. */
-        extent = quicklist->count;
-    } else if (start < 0 && extent > (quicklist->count - (-start) + 1)) {
+        extent = quicklist->count - start;
+    } else if (start < 0 && extent > (unsigned long)(-start)) {
         /* else, if at negative offset, limit max size to rest of list. */
         extent = -start; /* c.f. LREM -29 29; just delete until end. */
     }
@@ -598,7 +596,7 @@ int quicklistDelRange(quicklist *quicklist, const long start,
              * can just delete the entire node without ziplist math. */
             delete_entire_node = 1;
             del = node->count;
-        } else if (entry.offset >= 0 && extent > node->count) {
+        } else if (entry.offset >= 0 && extent >= node->count) {
             /* If deleting more nodes after this one, calculate delete based
              * on size of current node. */
             del = node->count - entry.offset;
@@ -891,7 +889,7 @@ void quicklistRotate(quicklist *quicklist, const size_t fill) {
     if (!value) {
         /* Write the longval as a string so we can re-add it */
         int wrote = ll2string(longstr, sizeof(longstr), longval);
-        value = (unsigned char *)longval;
+        value = (unsigned char *)longstr;
         sz = wrote;
     }
 
@@ -899,6 +897,7 @@ void quicklistRotate(quicklist *quicklist, const size_t fill) {
     quicklistPushHead(quicklist, fill, value, sz);
 
     /* Remove tail entry. */
+    p = ziplistIndex(tail->zl, -1);
     quicklistDelIndex(quicklist, tail, &p);
 }
 
@@ -1622,6 +1621,15 @@ int quicklistTest(int argc, char *argv[]) {
         quicklistRelease(ql);
     }
 
+    TEST("delete range of entire node with overflow counts") {
+        quicklist *ql = quicklistCreate();
+        for (int i = 0; i < 32; i++)
+            quicklistPushHead(ql, F, genstr("hello", i), 32);
+        quicklistDelRange(ql, 0, 128);
+        ql_verify(ql, 0, 0, 0, 0);
+        quicklistRelease(ql);
+    }
+
     TEST("delete middle 100 of 500 list") {
         quicklist *ql = quicklistCreate();
         for (int i = 0; i < 500; i++)
@@ -1636,6 +1644,15 @@ int quicklistTest(int argc, char *argv[]) {
         for (int i = 0; i < 500; i++)
             quicklistPushTail(ql, F, genstr("hello", i + 1), 32);
         quicklistDelRange(ql, -1, 1);
+        ql_verify(ql, 16, 499, 32, 19);
+        quicklistRelease(ql);
+    }
+
+    TEST("delete negative 1 from 500 list with overflow counts") {
+        quicklist *ql = quicklistCreate();
+        for (int i = 0; i < 500; i++)
+            quicklistPushTail(ql, F, genstr("hello", i + 1), 32);
+        quicklistDelRange(ql, -1, 128);
         ql_verify(ql, 16, 499, 32, 19);
         quicklistRelease(ql);
     }
