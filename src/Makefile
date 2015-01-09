@@ -220,6 +220,15 @@ test-sentinel: $(REDIS_SENTINEL_NAME)
 test-cluster: $(REDIS_SERVER_NAME)
 	@(cd ..; ./runtest-cluster)
 
+test-valgrind: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME)
+	@(cd ..; ./runtest --valgrind)
+
+test-sentinel-valgrind: $(REDIS_SENTINEL_NAME)
+	@(cd ..; ./runtest-sentinel --valgrind)
+
+test-cluster-valgrind: $(REDIS_SERVER_NAME)
+	@(cd ..; ./runtest-cluster --valgrind)
+
 test-cluster-bring-up: $(REDIS_SERVER_NAME)
 	@(../tests/integration/runtest-automated-cluster-bring-up)
 

@@ -16,6 +16,12 @@ compiler:
 # {clang, make -j REDIS_CFLAGS="",      make test-sentinel}
 # {clang, make -j REDIS_CFLAGS=-Werror, make}  # The last make is a noop
 env:
+    - TEST_TARGET=test-valgrind
+    - TEST_TARGET=test-sentinel-valgrind
+    - TEST_TARGET=test-cluster-valgrind
+    - TEST_TARGET="32bit test-valgrind"
+    - TEST_TARGET="32bit test-sentinel-valgrind"
+    - TEST_TARGET="32bit test-cluster-valgrind"
     - TEST_TARGET=test
     - TEST_TARGET=test-sentinel
     - TEST_TARGET=test-cluster
@@ -27,7 +33,7 @@ env:
 
 # Redis testing needs tcl
 install:
-    - sudo apt-get install tcl libc6-dev-i386 -y
+    - sudo apt-get install tcl libc6-dev-i386 valgrind -y
     - gem install redis
 
 # We start from inside src so -j is evaluated properly
