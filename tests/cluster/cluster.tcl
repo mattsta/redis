@@ -64,6 +64,7 @@ proc cluster_allocate_slots {n} {
 
 # Check that cluster nodes agree about "state", or raise an error.
 proc assert_cluster_state {state} {
+    puts "Waiting for cluster state to equal ${state}"
     foreach_redis_id id {
         if {[instance_is_killed redis $id]} continue
         wait_for_condition 500 300 {
