@@ -31,7 +31,7 @@ proc test_psync {descr duration backlog_size backlog_ttl delay cond} {
 
             test {Slave should be able to synchronize with the master} {
                 $slave slaveof $master_host $master_port
-                wait_for_condition 50 100 {
+                wait_for_condition 500 300 {
                     [lindex [r role] 0] eq {slave} &&
                     [lindex [r role] 3] eq {connected}
                 } else {
@@ -41,7 +41,7 @@ proc test_psync {descr duration backlog_size backlog_ttl delay cond} {
 
             # Check that the background clients are actually writing.
             test {Detect write load to master} {
-                wait_for_condition 50 100 {
+                wait_for_condition 50 300 {
                     [$master dbsize] > 100
                 } else {
                     fail "Can't detect write load from background clients."
@@ -74,7 +74,7 @@ proc test_psync {descr duration backlog_size backlog_ttl delay cond} {
                 set retry 10
                 while {$retry && ([$master debug digest] ne [$slave debug digest])}\
                 {
-                    after 1000
+                    after 5000
                     incr retry -1
                 }
                 assert {[$master dbsize] > 0}
