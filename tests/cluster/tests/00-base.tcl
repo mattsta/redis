@@ -32,8 +32,12 @@ test "After the join, every node gets a different config epoch" {
         # We check that this condition is true for *all* the nodes.
         set ok 1 ; # Will be set to 0 every time a node is not ok.
         foreach_redis_id id {
+            puts -nonewline .
+            flush stdout
             set epochs {}
             foreach n [get_cluster_nodes $id] {
+                puts -nonewline .
+                flush stdout
                 lappend epochs [dict get $n config_epoch]
             }
             if {[lsort $epochs] != [lsort -unique $epochs]} {
@@ -41,7 +45,7 @@ test "After the join, every node gets a different config epoch" {
             }
         }
         if {$ok} break
-        after 1000
+        after 300
         puts -nonewline .
         flush stdout
     }

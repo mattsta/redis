@@ -62,7 +62,11 @@ proc wait_for_condition {maxtries delay e _else_ elsescript} {
         } else {
             return -code $errcode $result
         }
+        puts -nonewline .
+        flush stdout
         after $delay
+        puts -nonewline .
+        flush stdout
     }
     if {$maxtries == -1} {
         set errcode [catch [uplevel 1 $elsescript] result]

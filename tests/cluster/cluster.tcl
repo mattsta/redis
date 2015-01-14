@@ -66,7 +66,7 @@ proc cluster_allocate_slots {n} {
 proc assert_cluster_state {state} {
     foreach_redis_id id {
         if {[instance_is_killed redis $id]} continue
-        wait_for_condition 1000 50 {
+        wait_for_condition 500 300 {
             [CI $id cluster_state] eq $state
         } else {
             fail "Cluster node $id cluster_state:[CI $id cluster_state]"
