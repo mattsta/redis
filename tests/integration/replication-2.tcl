@@ -2,7 +2,7 @@ start_server {tags {"repl"}} {
     start_server {} {
         test {First server should have role slave after SLAVEOF} {
             r -1 slaveof [srv 0 host] [srv 0 port]
-            after 1000
+            after 5000
             s -1 role
         } {slave}
 
@@ -10,7 +10,7 @@ start_server {tags {"repl"}} {
             r config set min-slaves-to-write 1
             r config set min-slaves-max-lag 10
             r set foo 12345
-            wait_for_condition 50 100 {
+            wait_for_condition 500 300 {
                 [r -1 get foo] eq {12345}
             } else {
                 fail "Write did not reached slave"
@@ -28,7 +28,7 @@ start_server {tags {"repl"}} {
             r config set min-slaves-to-write 1
             r config set min-slaves-max-lag 10
             r set foo 12345
-            wait_for_condition 50 100 {
+            wait_for_condition 500 300 {
                 [r -1 get foo] eq {12345}
             } else {
                 fail "Write did not reached slave"
@@ -54,7 +54,7 @@ start_server {tags {"repl"}} {
             r -1 config set min-slaves-to-write 1
             r -1 config set min-slaves-max-lag 10
             r set foo aaabbb
-            wait_for_condition 50 100 {
+            wait_for_condition 500 300 {
                 [r -1 get foo] eq {aaabbb}
             } else {
                 fail "Write did not reached slave"
