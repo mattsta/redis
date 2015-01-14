@@ -57,7 +57,7 @@ test "Cluster Join and auto-discovery test" {
     }
 
     foreach_redis_id id {
-        wait_for_condition 500 300 {
+        wait_for_condition 1000 500 {
             [llength [get_cluster_nodes $id]] == [llength $ids]
         } else {
             fail "Cluster failed to join into a full mesh."
