@@ -539,6 +539,9 @@ void clusterReset(int hard) {
         clusterAddNode(myself);
     }
 
+    redisLog(REDIS_WARNING, "After deleting all nodes, we now have %lu nodes.",
+            dictSize(server.cluster->nodes));
+
     /* Make sure to persist the new config and update the state. */
     clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
                          CLUSTER_TODO_UPDATE_STATE|
@@ -4094,8 +4097,10 @@ void clusterCommand(redisClient *c) {
         if (epoch < 0) {
             addReplyErrorFormat(c,"Invalid config epoch specified: %lld",epoch);
         } else if (dictSize(server.cluster->nodes) > 1) {
-            addReplyError(c,"The user can assign a config epoch only when the "
-                            "node does not know any other node.");
+            addReplyErrorFormat(c,"The user can assign a config epoch only "
+                    "when the node does not know any other node. "
+                    "This node knows about %lu other node(s)!",
+                    dictSize(server.cluster->nodes)-1);
         } else if (myself->configEpoch != 0) {
             addReplyError(c,"Node config epoch is already non-zero");
         } else {
