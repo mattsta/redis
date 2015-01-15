@@ -83,7 +83,7 @@ proc spawn_instance {type base_port count {conf {}}} {
         lappend ::pids $pid
 
         # Check availability
-        if {[server_is_up 127.0.0.1 $port 100] == 0} {
+        if {[server_is_up 127.0.0.1 $port 1000] == 0} {
             abort_sentinel_test "Problems starting $type #$j: ping timeout"
         }
 
@@ -424,7 +424,7 @@ proc restart_instance {type id} {
     lappend ::pids $pid
 
     # Check that the instance is running
-    if {[server_is_up 127.0.0.1 $port 100] == 0} {
+    if {[server_is_up 127.0.0.1 $port 1000] == 0} {
         abort_sentinel_test "Problems starting $type #$id: ping timeout"
     }
 
