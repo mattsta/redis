@@ -171,7 +171,7 @@ tags {"aof"} {
 
         test "Fixed AOF: Keyspace should contain values that were parseable" {
             set client [redis [dict get $srv host] [dict get $srv port]]
-            wait_for_condition 50 100 {
+            wait_for_condition 500 300 {
                 [catch {$client ping} e] == 0
             } else {
                 fail "Loading DB is taking too much time."
@@ -195,7 +195,7 @@ tags {"aof"} {
 
         test "AOF+SPOP: Set should have 1 member" {
             set client [redis [dict get $srv host] [dict get $srv port]]
-            wait_for_condition 50 100 {
+            wait_for_condition 500 300 {
                 [catch {$client ping} e] == 0
             } else {
                 fail "Loading DB is taking too much time."
@@ -219,7 +219,7 @@ tags {"aof"} {
 
         test "AOF+SPOP: Set should have 1 member" {
             set client [redis [dict get $srv host] [dict get $srv port]]
-            wait_for_condition 50 100 {
+            wait_for_condition 500 300 {
                 [catch {$client ping} e] == 0
             } else {
                 fail "Loading DB is taking too much time."
@@ -242,7 +242,7 @@ tags {"aof"} {
 
         test "AOF+EXPIRE: List should be empty" {
             set client [redis [dict get $srv host] [dict get $srv port]]
-            wait_for_condition 50 100 {
+            wait_for_condition 500 300 {
                 [catch {$client ping} e] == 0
             } else {
                 fail "Loading DB is taking too much time."
