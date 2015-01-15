@@ -221,7 +221,7 @@ test-cluster: $(REDIS_SERVER_NAME)
 	@(cd ..; ./runtest-cluster)
 
 test-valgrind: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME)
-	@(cd ..; ./runtest --valgrind)
+	@(cd ..; ./runtest --valgrind --clients 4)
 
 test-sentinel-valgrind: $(REDIS_SENTINEL_NAME)
 	@(cd ..; ./runtest-sentinel --valgrind)
