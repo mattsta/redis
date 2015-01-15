@@ -16,9 +16,9 @@ compiler:
 # {clang, make -j REDIS_CFLAGS="",      make test-sentinel}
 # {clang, make -j REDIS_CFLAGS=-Werror, make}  # The last make is a noop
 env:
-    - TEST_TARGET=test-valgrind
-    - TEST_TARGET=test-sentinel-valgrind
-    - TEST_TARGET=test-cluster-valgrind
+    - TEST_TARGET=test-valgrind VALGRINDPATH="/tmp/valgrind/bin"
+    - TEST_TARGET=test-sentinel-valgrind VALGRINDPATH="/tmp/valgrind/bin"
+    - TEST_TARGET=test-cluster-valgrind VALGRINDPATH="/tmp/valgrind/bin"
     - TEST_TARGET="32bit test-valgrind"
     - TEST_TARGET="32bit test-sentinel-valgrind"
     - TEST_TARGET="32bit test-cluster-valgrind"
@@ -40,11 +40,11 @@ before_install:
 install:
     - sudo apt-get install tcl libc6-dbg libc6-dev libc6-i686:i386 libc6-dev-i386 libc6-dbg:i386 valgrind -y
     - pushd /tmp && curl http://valgrind.org/downloads/valgrind-3.10.1.tar.bz2 | tar xjp
-    - pushd valgrind*/ && ./configure
+    - pushd valgrind*/ && ./configure --prefix=/tmp/valgrind
     - make -j 4
-    - sudo make install
+    - make install
     - popd && popd
     - gem install redis
 
 # We start from inside src so -j is evaluated properly
-script: cd src; make -j REDIS_CFLAGS=$REDIS_CFLAGS && make $TEST_TARGET
+script: cd src; make -j REDIS_CFLAGS=$REDIS_CFLAGS && export PATH=$VALGRINDPATH:$PATH && make $TEST_TARGET
