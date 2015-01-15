@@ -45,7 +45,7 @@ proc exec_instance {type cfgfile} {
     }
 
     if {$::valgrind} {
-        set pid [exec valgrind --track-origins=yes --suppressions=../../../src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ../../../src/${prgname} $cfgfile &]
+        set pid [exec valgrind --gen-suppressions=all --track-origins=yes --suppressions=../../../src/valgrind.sup --show-reachable=no --show-possibly-lost=no --leak-check=full ../../../src/${prgname} $cfgfile &]
     } else {
         set pid [exec ../../../src/${prgname} $cfgfile &]
     }
@@ -79,6 +79,7 @@ proc spawn_instance {type base_port count {conf {}}} {
 
         # Finally exec it and remember the pid for later cleanup.
         set pid [exec_instance $type $cfgfile]
+
         lappend ::pids $pid
 
         # Check availability
@@ -418,6 +419,7 @@ proc restart_instance {type id} {
     # Execute the instance with its old setup and append the new pid
     # file for cleanup.
     set pid [exec_instance $type $cfgfile]
+
     set_instance_attrib $type $id pid $pid
     lappend ::pids $pid
 
