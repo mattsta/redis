@@ -14,7 +14,7 @@ proc 02_test_slaves_replication {} {
             foreach_redis_id id {
                 if {$id == $master_id} continue
                 if {[instance_is_killed redis $id]} continue
-                wait_for_condition 1000 50 {
+                wait_for_condition 500 300 {
                     ([RI $id master_port] == $master_port) &&
                     ([RI $id master_link_status] eq {up})
                 } else {
@@ -33,7 +33,7 @@ proc 02_crash_and_failover {} {
             assert {[lindex $addr 1] == $old_port}
             kill_instance redis $master_id
             foreach_sentinel_id id {
-                wait_for_condition 1000 50 {
+                wait_for_condition 500 300 {
                     [lindex [S $id SENTINEL GET-MASTER-ADDR-BY-NAME mymaster] 1] != $old_port
                 } else {
                     fail "At least one Sentinel did not received failover info"

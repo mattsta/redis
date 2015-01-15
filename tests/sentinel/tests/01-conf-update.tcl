@@ -13,7 +13,7 @@ test "We can failover with Sentinel 1 crashed" {
     kill_instance redis $master_id
     foreach_sentinel_id id {
         if {$id != 1} {
-            wait_for_condition 1000 50 {
+            wait_for_condition 500 300 {
                 [lindex [S $id SENTINEL GET-MASTER-ADDR-BY-NAME mymaster] 1] != $old_port
             } else {
                 fail "Sentinel $id did not received failover info"
@@ -27,7 +27,7 @@ test "We can failover with Sentinel 1 crashed" {
 
 test "After Sentinel 1 is restarted, its config gets updated" {
     restart_instance sentinel 1
-    wait_for_condition 1000 50 {
+    wait_for_condition 500 300 {
         [lindex [S 1 SENTINEL GET-MASTER-ADDR-BY-NAME mymaster] 1] != $old_port
     } else {
         fail "Restarted Sentinel did not received failover info"
