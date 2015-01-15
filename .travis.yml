@@ -33,6 +33,9 @@ env:
 
 before_install:
     - sudo apt-get update
+#    - sudo sysctl vm.overcommit_memory=1
+#    - sudo sysctl net.core.somaxconn=4096
+#    - sudo bash -c "echo never > /sys/kernel/mm/transparent_hugepage/enabled"
 
 # Actually, we should only install 'valgrind' if we are using a 'valgrind'
 # target.  Eventually make an install script to install only what each
